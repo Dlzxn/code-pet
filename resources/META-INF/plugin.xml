@@ -1,7 +1,7 @@
 <idea-plugin>
   <id>dev.codepet.prototype</id>
   <name>Code Pet</name>
-  <version>0.3.0</version>
+  <version>0.6.0</version>
   <vendor>Personal</vendor>
   <description>Личный питомец, который растёт вместе с вашей работой над кодом.</description>
   <idea-version since-build="263" until-build="263.*"/>
@@ -14,6 +14,9 @@
   <applicationListeners>
     <listener class="dev.codepet.PetFileListener" topic="com.intellij.openapi.vfs.newvfs.BulkFileListener"/>
   </applicationListeners>
+  <projectListeners>
+    <listener class="dev.codepet.PetExecutionListener" topic="com.intellij.execution.ExecutionListener"/>
+  </projectListeners>
   <actions>
     <action id="CodePet.ToggleRoaming" class="dev.codepet.ToggleRoamingAction"
             text="Code Pet: показать питомца в редакторе" description="Показать или скрыть фонового питомца">

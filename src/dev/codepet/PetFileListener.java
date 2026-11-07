@@ -19,7 +19,7 @@ public final class PetFileListener implements BulkFileListener {
             VirtualFile file=create.getFile();
             if(!PetEligibility.projectFile(project,file))continue;
             PetCollection.FileProgress f=PetState.collection().file(PetCodingTracker.key(file.getUrl()),0,0);
-            f.creationSeen=true;PetModel pet=PetState.model();pet.filesCreated=Math.min(Integer.MAX_VALUE-1,pet.filesCreated)+1;
+            f.creationSeen=true;for(PetModel pet:PetState.collection().activePets())pet.filesCreated=Math.min(Integer.MAX_VALUE-1,pet.filesCreated)+1;
         }
     }
 }

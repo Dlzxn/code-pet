@@ -31,13 +31,13 @@ public final class PetActivityListener implements DocumentListener {
     @Override public void beforeDocumentChange(DocumentEvent event){
         Project p=eligible(event);
         if(p!=null){
-            PetRoaming roaming=p.getServiceIfCreated(PetRoaming.class);if(roaming!=null)roaming.invalidate();
+            PetRoaming roaming=p.getServiceIfCreated(PetRoaming.class);if(roaming!=null)roaming.typing();
             p.getService(PetCodingTracker.class).before(event.getDocument(),FileDocumentManager.getInstance().getFile(event.getDocument()));
         }
     }
     @Override public void documentChanged(DocumentEvent event){
         Project p=eligible(event);
-        if(p!=null)p.getService(PetCodingTracker.class).changed(event.getDocument());
+        if(p!=null){p.getService(PetCodingTracker.class).changed(event.getDocument());if(event.getNewLength()>1200)PetReactions.signal(PetState.model(),"large-paste",System.nanoTime());}
         else if(ApplicationManager.getApplication().isDispatchThread())for(Project open:com.intellij.openapi.project.ProjectManager.getInstance().getOpenProjects()){
             PetCodingTracker tracker=open.getServiceIfCreated(PetCodingTracker.class);if(tracker!=null)tracker.discard(event.getDocument());
         }

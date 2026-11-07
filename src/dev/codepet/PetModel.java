@@ -30,6 +30,18 @@ public final class PetModel implements Cloneable {
     public boolean animated = true;
     public boolean roaming = true;
     public boolean speech = true;
+    public boolean idleExploration = true;
+    public boolean cameos = true;
+    public boolean growWhenIdle = true;
+    public String activityLevel = "Живой";
+    public int discoveries;
+    public int deliveredGiftLevel = 1;
+    public int storiesCompleted;
+    public transient long ideSignal,lastReactionNanos;
+    public transient String ideEvent = "";
+    public int availableFinds(){return Math.min(6,Math.max(0,level()-1));}
+    public String latestFind(){int n=availableFinds();return n==0?"Пока только уют":new String[]{"Шарф путешественника","Золотые очки","Звёздный плащ","Домик исследователя","Полка находок","Телескоп"}[n-1];}
+    public boolean receiveGift(){if(level()<=deliveredGiftLevel)return false;deliveredGiftLevel=level();discoveries=availableFinds();return true;}
 
     public PetModel copy(){try{return (PetModel)super.clone();}catch(CloneNotSupportedException e){throw new AssertionError(e);}}
     public int level() { return Math.max(1, (int) ((1 + Math.sqrt(1 + .08 * xp)) / 2)); }
@@ -52,6 +64,8 @@ public final class PetModel implements Cloneable {
         type=PetCatalog.species(type).id();
         name=name==null||name.isBlank()?"Байт":name.strip();
         if(name.length()>40) name=name.substring(0,40);
+        activityLevel=PetCatalog.valid(activityLevel,new String[]{"Живой","Спокойный","Хаос"});
+        discoveries=Math.max(0,Math.min(6,discoveries));deliveredGiftLevel=Math.max(1,Math.min(level(),deliveredGiftLevel));storiesCompleted=Math.max(0,storiesCompleted);
         xp=Math.max(0,xp); charactersWritten=Math.max(0,charactersWritten);linesWritten=Math.max(0,linesWritten);
         characterRemainder=Math.max(0,Math.min(99,characterRemainder));filesCreated=Math.max(0,filesCreated);
         size=Math.max(56,Math.min(112,size)); roamingSize=Math.max(22,Math.min(40,roamingSize));

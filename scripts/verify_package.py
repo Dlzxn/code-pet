@@ -21,6 +21,7 @@ def verify(root):
             for extension in descriptor.find("extensions"):
                 references.append(extension.get("implementation") or extension.get("factoryClass"))
             references.extend(item.get("class") for item in descriptor.find("applicationListeners"))
+            references.extend(item.get("class") for item in descriptor.find("projectListeners"))
             references.extend(item.get("class") for item in descriptor.find("actions"))
             for reference in references:
                 assert reference and reference.replace(".", "/") + ".class" in jar.namelist(), f"Missing extension: {reference}"

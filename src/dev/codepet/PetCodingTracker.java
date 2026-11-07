@@ -13,7 +13,7 @@ import java.util.*;
 /** Debounced scans, bounded pending documents, and no stored source text. All access on EDT. */
 @Service(Service.Level.PROJECT)
 public final class PetCodingTracker implements Disposable {
-    private record Pending(String key,String owner){}
+    private record Pending(String key,String owner,java.util.List<String> recipients){}
     private final Project project;
     private final IdentityHashMap<Document,Pending> pending=new IdentityHashMap<>();
     private final Timer timer;
@@ -26,7 +26,7 @@ public final class PetCodingTracker implements Disposable {
     public void before(Document document,VirtualFile file){before(document,file.getUrl());}
     void before(Document document,String url){
         if(disposed||document.getTextLength()>500_000)return;
-        String owner=PetState.model().id;
+        java.util.List<String> recipients=PetState.collection().activePets().stream().map(p->p.id).toList();String owner=String.join(",",recipients);
         Pending prior=pending.get(document);
         if(prior!=null&&prior.owner.equals(owner))return;
         if(prior!=null){apply(document,prior);pending.remove(document);}
@@ -36,7 +36,7 @@ public final class PetCodingTracker implements Disposable {
         PetCollection.FileProgress f=PetState.collection().file(key,counts.characters(),counts.lines());
         // Existing/reloaded text is a baseline, never a retroactive reward.
         f.characters=Math.max(f.characters,counts.characters());f.lines=Math.max(f.lines,counts.lines());
-        pending.put(document,new Pending(key,owner));
+        pending.put(document,new Pending(key,owner,recipients));
     }
     public void changed(Document document){if(!disposed&&pending.containsKey(document))timer.restart();}
     public void discard(Document doc){
@@ -47,7 +47,7 @@ public final class PetCodingTracker implements Disposable {
     private void apply(Document doc,Pending entry){
         if(doc.getTextLength()>500_000)return;
         PetMetrics.Counts c=PetMetrics.count(doc.getImmutableCharSequence());
-        PetState.collection().record(entry.key,c.characters(),c.lines(),entry.owner);
+        PetState.collection().recordFor(entry.key,c.characters(),c.lines(),entry.recipients);
     }
     void flush(){
         timer.stop();

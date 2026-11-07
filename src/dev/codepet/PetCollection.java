@@ -2,10 +2,14 @@ package dev.codepet;
 
 import java.util.*;
 
-/** One persistent collection per IDE, one active character, and shared per-file high-water marks. */
+/** Persistent profiles, a customization selection, enabled companions and shared file high-water marks. */
 public final class PetCollection {
     public ArrayList<PetModel> pets = new ArrayList<>();
     public String activeId = "";
+    public long quietUntilMillis;
+    public ArrayList<String> activeIds=new ArrayList<>();
+    public boolean behindText=true,keyboardGames=true;
+    public transient long runSerial;
     public ArrayList<FileProgress> files = new ArrayList<>();
     // Legacy 0.1 / 0.2 fields are read once on migration. No old progress is discarded.
     public int xp;
@@ -21,9 +25,12 @@ public final class PetCollection {
         public FileProgress() {}
     }
     public PetModel active() { normalizeIfEmpty(); return find(activeId); }
+    public java.util.List<PetModel> activePets(){active();if(activeIds==null)activeIds=new ArrayList<>();if(activeIds.isEmpty())activeIds.add(activeId);return pets.stream().filter(p->activeIds.contains(p.id)&&p.roaming).toList();}
+    public boolean enabled(String id){return activePets().stream().anyMatch(p->p.id.equals(id));}
+    public void enable(String id,boolean enabled){active();if(activeIds.isEmpty())activeIds.add(activeId);if(enabled){if(!activeIds.contains(id))activeIds.add(id);find(id).roaming=true;}else if(activeIds.size()>1){activeIds.remove(id);find(id).roaming=false;}}
     public PetModel find(String id) { return pets.stream().filter(p->p.id.equals(id)).findFirst().orElse(pets.get(0)); }
     public PetModel create(String type, String name) {
-        PetModel pet=new PetModel();pet.type=type;pet.name=name;pet.normalize();pets.add(pet);activeId=pet.id;return pet;
+        PetModel pet=new PetModel();pet.type=type;pet.name=name;pet.normalize();pets.add(pet);activeId=pet.id;if(!activeIds.contains(pet.id))activeIds.add(pet.id);return pet;
     }
     public void select(int offset) {
         PetModel current=active();int index=pets.indexOf(current);
@@ -41,24 +48,31 @@ public final class PetCollection {
         f.characters=Math.max(f.characters,characters);f.lines=Math.max(f.lines,lines);
         return find(petId).earn(dc,dl);
     }
+    public int recordFor(String key,int characters,int lines,java.util.List<String> recipients){
+        FileProgress f=file(key,characters,lines);int dc=Math.max(0,characters-f.characters),dl=Math.max(0,lines-f.lines);f.characters=Math.max(f.characters,characters);f.lines=Math.max(f.lines,lines);
+        long sum=0;for(String id:new LinkedHashSet<>(recipients))if(pets.stream().anyMatch(p->p.id.equals(id)))sum+=find(id).earn(dc,dl);return (int)Math.min(Integer.MAX_VALUE,sum);
+    }
     private void normalizeIfEmpty() {
         if(pets.isEmpty()) {
             PetModel pet=new PetModel();pet.xp=Math.max(0,xp);pet.name=name;pet.color=color;pet.size=size;
-            pet.animated=animated;pet.roaming=roaming;pet.paused=paused;pet.normalize();pets.add(pet);activeId=pet.id;
+            pet.animated=animated;pet.roaming=roaming;pet.paused=paused;pet.normalize();pets.add(pet);activeId=pet.id;if(!activeIds.contains(pet.id))activeIds.add(pet.id);
             xp=0; name="Байт";color="Мятный";size=88;animated=true;roaming=true;paused=false;
         }
     }
     public PetCollection snapshot() {
-        PetCollection copy=new PetCollection();copy.activeId=activeId;
+        PetCollection copy=new PetCollection();copy.activeId=activeId;copy.quietUntilMillis=quietUntilMillis;copy.activeIds=new ArrayList<>(activeIds);copy.behindText=behindText;copy.keyboardGames=keyboardGames;
         for(PetModel pet:pets.toArray(PetModel[]::new))if(pet!=null)copy.pets.add(pet.copy());
         for(FileProgress f:files.toArray(FileProgress[]::new))if(f!=null){FileProgress saved=new FileProgress();saved.key=f.key;saved.characters=f.characters;saved.lines=f.lines;saved.creationSeen=f.creationSeen;copy.files.add(saved);}
         return copy;
     }
     public void normalize() {
+        quietUntilMillis=Math.max(0,quietUntilMillis);
+        if(activeIds==null)activeIds=new ArrayList<>();
         if(pets==null)pets=new ArrayList<>();pets.removeIf(Objects::isNull);normalizeIfEmpty();
         Set<String> ids=new HashSet<>();
         for(PetModel pet:pets) {pet.normalize();if(!ids.add(pet.id)){pet.id=UUID.randomUUID().toString();ids.add(pet.id);}}
         activeId=find(activeId).id;
+        if(activeIds==null)activeIds=new ArrayList<>();activeIds=new ArrayList<>(new LinkedHashSet<>(activeIds));activeIds.removeIf(id->pets.stream().noneMatch(p->p.id.equals(id)));if(activeIds.isEmpty())activeIds.add(activeId);
         if(files==null)files=new ArrayList<>();
         files.removeIf(f->f==null||f.key==null||f.key.isBlank());
         if(files.size()>5000) files=new ArrayList<>(files.subList(files.size()-5000,files.size()));

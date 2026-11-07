@@ -25,12 +25,13 @@ final class PetCatalog {
     private static final int[] RGB = {0x8DD8BC,0xEDB18F,0xB7A2E4,0x8CBFEA,0xEC8E87,0xE9D482,0xE7AED0,0x7BCBCB,0xA486B5,0xD7C6A1,0xB8C1CC,0xE8EBE9,0x647181,0x6DB391,0xC7946C,0x8995D4};
     static final String[] PATTERNS = {"Без узора", "Пятна", "Полоски", "Веснушки", "Звёздочки", "Носочки"};
     static final String[] HEADS = {"Без головного убора", "Шапка", "Берет", "Корона", "Колпак мага", "Цилиндр", "Цветок", "Наушники", "Нимб", "Рога"};
-    static final String[] FACES = {"Без очков", "Круглые очки", "Солнечные очки", "Монокль", "Маска героя", "Визор"};
-    static final String[] NECKS = {"Без украшения", "Шарф", "Бант", "Медальон", "Галстук", "Бабочка", "Бусы"};
-    static final String[] BACKS = {"Без плаща", "Плащ героя", "Плащ мага", "Рюкзак", "Крылья феи", "Крылья ангела", "Джетпак"};
+    static final String[] FACES = {"Без очков", "Круглые очки", "Солнечные очки", "Монокль", "Маска героя", "Визор", "Золотые очки"};
+    static final String[] NECKS = {"Без украшения", "Шарф", "Бант", "Медальон", "Галстук", "Бабочка", "Бусы", "Шарф путешественника"};
+    static final String[] BACKS = {"Без плаща", "Плащ героя", "Плащ мага", "Рюкзак", "Крылья феи", "Крылья ангела", "Джетпак", "Звёздный плащ"};
     static final String[] EYES = {"Круглые", "Большие", "Сонные", "Звёздные"};
     static final String[] TAILS = {"Обычный", "Пушистый", "Короткий", "Без хвоста"};
     static final String[] TEMPERAMENTS = {"Любопытный", "Спокойный", "Энергичный"};
+    static boolean unlocked(String value,int level){return switch(value){case "Шарф путешественника"->level>=2;case "Золотые очки"->level>=3;case "Звёздный плащ"->level>=4;default->true;};}
     static Species species(String id) { return Arrays.stream(SPECIES).filter(s -> s.id.equals(id)).findFirst().orElse(SPECIES[0]); }
     static Color color(String name) { for (int i=0;i<COLORS.length;i++) if(COLORS[i].equals(name)) return new Color(RGB[i]); return new Color(RGB[0]); }
     static String valid(String value, String[] options) { return Arrays.asList(options).contains(value) ? value : options[0]; }
