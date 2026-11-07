@@ -1,0 +1,72 @@
+name: Build and test
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plugin:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: actions/cache@v6
+        with:
+          path: .ci-sdk
+          key: pycharm-linux-263.7307.206-v1
+      - name: Install pinned PyCharm SDK
+        run: python scripts/install_ci_sdk.py
+      - name: Build, test and verify plugin
+        run: python scripts/check.py
+      - name: Upload installable plugin
+        uses: actions/upload-artifact@v7
+        with:
+          name: code-pet-${{ github.sha }}
+          path: dist/*.zip
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload reports and UI previews
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: reports-${{ github.sha }}
+          path: build/reports/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: plugin
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: code-pet-${{ github.sha }}
+          path: dist
+      - name: Publish draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_TAG" dist/*.zip --draft --generate-notes
