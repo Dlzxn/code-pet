@@ -118,7 +118,7 @@ final class PetPainter {
         g.setStroke(new BasicStroke(2.7f,BasicStroke.CAP_ROUND,BasicStroke.JOIN_ROUND));
         Color eyes=PetCatalog.color(pet.eyeColor);if(eyes.equals(fur))eyes=INK;
         for(int side:new int[]{-1,1}){
-            double ex=side*19+(a==PetBehavior.Action.CINEMA?-4:a==PetBehavior.Action.BALL_THINK?3:a==PetBehavior.Action.WATCH?Math.sin(t*.5)*4:0);
+            double ex=side*19+(a==PetBehavior.Action.CINEMA?-4:a==PetBehavior.Action.LOUNGE?4:a==PetBehavior.Action.BALL_THINK?3:a==PetBehavior.Action.WATCH?Math.sin(t*.5)*4:0);
             g.setColor(eyes);
             if(closed)g.draw(new Arc2D.Double(ex-6,eyeY-3,12,8,0,180,Arc2D.OPEN));
             else if(pet.eyes.equals("Звёздные"))star(g,ex,eyeY,7,3);

@@ -187,19 +187,23 @@ public final class PetChecks {
     static void layout(Container root){root.invalidate();root.doLayout();for(Component c:root.getComponents())if(c instanceof Container container)layout(container);}
     static void ui(Path out)throws Exception{
         PetCollection collection=new PetCollection();collection.active().xp=150;PetModel second=collection.create("fox","Люми");second.head="Берет";second.neck="Шарф";second.color="Лавандовый";
-        PetToolWindow.PetPanel panel=new PetToolWindow.PetPanel(()->collection,()->{});panel.setSize(480,1120);layout(panel);for(int i=0;i<80;i++)panel.pulse();
-        check(all(panel).stream().filter(c->c instanceof JLabel l&&l.getText().startsWith("УРОВЕНЬ")).allMatch(c->c.getWidth()>0&&c.getHeight()>0),"Level label occupies visible space");
-        int before=collection.active().xp;button(panel,"♡ Погладить").doClick();check(collection.active().xp==before,"Real UI interactions award no XP");
-        JCheckBox behind=(JCheckBox)all(panel).stream().filter(c->c instanceof JCheckBox b&&b.getText().equals("Питомцы позади текста кода")).findFirst().orElseThrow();
-        behind.doClick();check(!collection.behindText,"Background switch persists globally");behind.doClick();
-        JCheckBox enabled=(JCheckBox)all(panel).stream().filter(c->c instanceof JCheckBox b&&b.getText().equals("Показывать этого питомца")).findFirst().orElseThrow();
-        enabled.doClick();check(!collection.enabled(second.id)&&collection.enabled(collection.pets.get(0).id),"Profile checkbox disables only the chosen companion");enabled.doClick();check(collection.activePets().size()==2,"Several companions can be enabled together");
-        button(panel,"‹").doClick();check(collection.active().type.equals("cat")&&collection.activePets().size()==2,"Carousel selects previous without hiding companions");button(panel,"›").doClick();check(collection.active()==second,"Carousel button selects next");
-        JTextField field=(JTextField)all(panel).stream().filter(c->c instanceof JTextField f&&f.getToolTipText()!=null&&f.getToolTipText().contains("Имя сохраняется")).findFirst().orElseThrow();field.setText("Новое имя");check(second.name.equals("Новое имя"),"Name auto-saves on input");
-        button(panel,"＋ Создать питомца").doClick();button(panel,"Добавить в коллекцию").doClick();check(collection.pets.size()==3&&collection.active().xp==0,"Real creation UI creates one active independent profile");
-        int earned=collection.active().xp;button(panel,"Не мешай 30 мин").doClick();check(collection.quietUntilMillis>System.currentTimeMillis()&&collection.active().xp==earned,"Quiet mode does not pause or award XP");button(panel,"Вернуть питомца").doClick();check(collection.quietUntilMillis==0,"Quiet mode can be cancelled");
-        collection.select(-1);panel.pulse();layout(panel);BufferedImage image=new BufferedImage(480,1120,BufferedImage.TYPE_INT_RGB);Graphics2D g=image.createGraphics();panel.printAll(g);g.dispose();ImageIO.write(image,"png",out.resolve("ui-preview.png").toFile());
-        for(Component c:all(panel))if(c instanceof JTabbedPane tabs)for(int index=0;index<tabs.getTabCount();index++){tabs.setSelectedIndex(index);layout(panel);Graphics2D pageGraphics=image.createGraphics();panel.printAll(pageGraphics);pageGraphics.dispose();}
-        panel.dispose();check(true,"All UI pages render and dispose");
+        PetToolWindow.PetPanel panel=new PetToolWindow.PetPanel(()->collection,()->{});panel.setSize(480,1000);layout(panel);for(int i=0;i<80;i++)panel.pulse();
+        check(all(panel).stream().noneMatch(c->c instanceof JTabbedPane),"Main panel contains no settings tabs");
+        int before=second.xp;button(panel,"♡ Погладить").doClick();check(second.xp==before,"Interaction does not award XP");
+        button(panel,"Убрать с экрана").doClick();check(!collection.enabled(second.id)&&collection.enabled(collection.pets.get(0).id),"Explicit action puts away only the chosen pet");
+        button(panel,"Выпустить в редактор").doClick();check(collection.activePets().size()==2,"Release button retains other active pets");
+        button(panel,"‹").doClick();check(collection.active().type.equals("cat")&&collection.activePets().size()==2,"Arrows only choose the card");button(panel,"›").doClick();
+        PetPreferences preferences=panel.preferencesContent();preferences.setSize(480,700);layout(preferences);
+        JCheckBox behind=(JCheckBox)all(preferences).stream().filter(c->c instanceof JCheckBox b&&b.getText().equals("Питомцы позади текста кода")).findFirst().orElseThrow();behind.doClick();check(!collection.behindText,"Popup settings change persisted global preferences");behind.doClick();
+        collection.select(-1);panel.pulse();String firstName=collection.active().name;
+        JTextField field=(JTextField)all(preferences).stream().filter(c->c instanceof JTextField f&&f.getToolTipText()!=null&&f.getToolTipText().contains("Имя сохраняется")).findFirst().orElseThrow();field.setText("Новое имя");
+        check(second.name.equals("Новое имя")&&collection.active().name.equals(firstName),"Popup remains pinned to its pet when the carousel changes");collection.select(1);panel.pulse();
+        button(panel,"＋ Добавить питомца").doClick();button(panel,"Создать и выпустить").doClick();check(collection.pets.size()==3&&collection.active().xp==0&&collection.enabled(collection.activeId),"Creation clearly releases the new pet");
+        int earned=collection.active().xp;button(panel,"Скрыть всех на 30 мин").doClick();check(collection.quietUntilMillis>System.currentTimeMillis()&&collection.active().xp==earned,"Quiet mode hides everyone without XP changes");button(panel,"Вернуть на экран").doClick();check(collection.quietUntilMillis==0,"Release action also resumes an enabled pet from quiet mode");
+        BufferedImage image=new BufferedImage(480,1000,BufferedImage.TYPE_INT_RGB);Graphics2D g=image.createGraphics();layout(panel);panel.printAll(g);g.dispose();ImageIO.write(image,"png",out.resolve("ui-preview.png").toFile());
+        preferences.refresh();layout(preferences);BufferedImage popup=new BufferedImage(480,700,BufferedImage.TYPE_INT_RGB);Graphics2D preview=popup.createGraphics();preferences.printAll(preview);preview.dispose();ImageIO.write(popup,"png",out.resolve("settings-preview.png").toFile());
+        for(Component c:all(preferences))if(c instanceof JTabbedPane tabs)for(int index=0;index<tabs.getTabCount();index++){tabs.setSelectedIndex(index);layout(preferences);Graphics2D page=popup.createGraphics();preferences.printAll(page);page.dispose();}
+        preferences.dispose();panel.dispose();check(true,"Main panel and popup pages render and dispose");
     }
+
 }

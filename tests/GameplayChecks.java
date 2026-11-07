@@ -15,7 +15,7 @@ public final class GameplayChecks {
     static int checks;
     static void check(boolean value,String message){checks++;if(!value)throw new AssertionError(message);}
     public static void main(String[] args)throws Exception{
-        collection();input();physics();phrases();
+        collection();input();physics();phrases();lounge();
         SwingUtilities.invokeAndWait(()->{background();scene();});
         System.out.println("PASS: "+checks+" gameplay checks (collection, input, ball, phrases, editor background, lifecycle)");
     }
@@ -34,8 +34,11 @@ public final class GameplayChecks {
         PetCollection restored=XmlSerializer.deserialize(XmlSerializer.serialize(c.snapshot()),PetCollection.class);restored.normalize();
         check(!restored.enabled(cat.id)&&restored.enabled(fox.id)&&!restored.behindText&&!restored.keyboardGames,"Enabled IDs and global settings survive SDK XML serialization");
         c.enable(cat.id,true);check(!restored.enabled(cat.id),"Save snapshot owns an independent enabled-ID list");
-        PetCollection legacy=new PetCollection();legacy.active();legacy.activeIds=null;legacy.normalize();
+        PetCollection legacy=new PetCollection();legacy.active();legacy.activeIds=null;legacy.activeIdsInitialized=false;legacy.normalize();
         check(legacy.activePets().size()==1,"Single-companion saves migrate to one enabled companion");
+        c.enable(cat.id,false);c.enable(fox.id,false);check(c.activePets().isEmpty(),"The last companion can be put away");
+        PetCollection empty=XmlSerializer.deserialize(XmlSerializer.serialize(c.snapshot()),PetCollection.class);empty.normalize();check(empty.activePets().isEmpty(),"An intentionally empty screen stays empty after restart");
+        empty.enable(cat.id,true);check(empty.activePets().size()==1,"A stored companion can be released again");
     }
     static void input(){
         long t=1_000_000_000L;PetPlayInput input=new PetPlayInput(t);
@@ -71,10 +74,20 @@ public final class GameplayChecks {
             for(String phrase:phrases)check(phrase.contains(pet.name)&&phrase.contains(s.name().toLowerCase(Locale.ROOT))&&all.add(phrase),"Launch phrase identifies the companion and its species");
         }
     }
+    static void lounge(){
+        for(Rectangle area:List.of(new Rectangle(12,60,960,600),new Rectangle(20,40,280,220),new Rectangle(0,0,140,100)))for(int count:new int[]{1,2,6,15,30,100}){
+            PetLounge.Layout layout=PetLounge.arrange(area,count);check(layout!=null&&layout.seats().size()==count&&area.contains(layout.bounds()),"Sofa layout includes every companion inside the available area");
+            check(!layout.hit(null)&&!layout.hit(new Point(area.x-1,area.y-1)),"Hover outside companions does not scatter the group");
+        }
+        PetLounge.Layout layout=PetLounge.arrange(new Rectangle(10,60,900,500),4);Rectangle seat=layout.seats().get(0);
+        check(layout.hit(new Point((int)seat.getCenterX(),(int)seat.getMaxY()-35)),"Hover on a seated companion scatters the group");
+        check(!layout.hit(new Point((int)layout.television().getCenterX(),(int)layout.television().getCenterY())),"Television itself is not a pet hover target");
+        check(PetLounge.arrange(new Rectangle(0,0,80,50),4)==null,"Tiny windows omit a sofa that cannot fit");
+    }
     static final class EditorFixture {
         final String source="source_value = 123456789\n";
         final Rectangle view=new Rectangle(0,0,800,500);
-        final JPanel content=new JPanel();final JLayeredPane layer=new JLayeredPane();
+        final JPanel content=new JPanel();final JLayeredPane layer=new JLayeredPane(){@Override public boolean isShowing(){return true;}@Override public Point getLocationOnScreen(){return new Point();}};
         CustomHighlighterRenderer renderer;int markers,disposed;boolean greedyLeft,greedyRight,valid;
         final RangeHighlighter marker=SdkChecks.proxy(RangeHighlighter.class,(p,m,a)->switch(m.getName()){
             case "setCustomRenderer"->{renderer=(CustomHighlighterRenderer)a[0];yield null;}
@@ -96,7 +109,7 @@ public final class GameplayChecks {
         final CaretModel caret=SdkChecks.proxy(CaretModel.class,(p,m,a)->m.getName().equals("getVisualPosition")?new VisualPosition(0,5):SdkChecks.fallback(p,m,a));
         final Editor editor=SdkChecks.proxy(Editor.class,(p,m,a)->switch(m.getName()){
             case "getDocument"->document;case "getMarkupModel"->markup;case "getScrollingModel"->scrolling;case "getCaretModel"->caret;case "getContentComponent"->content;
-            case "visualPositionToXY"->new Point(45,20);case "xyToLogicalPosition"->new LogicalPosition(0,1);case "getLineHeight"->20;
+            case "visualPositionToXY"->new Point(45,20);case "xyToLogicalPosition"->new LogicalPosition(0,1);case "getLineHeight"->20;case "getEditorKind"->EditorKind.MAIN_EDITOR;
             default->SdkChecks.fallback(p,m,a);
         });
         EditorFixture(){layer.setSize(1000,700);content.setBounds(80,60,800,500);layer.add(content,JLayeredPane.DEFAULT_LAYER);}
@@ -116,9 +129,19 @@ public final class GameplayChecks {
         input.pressed(KeyEvent.VK_TAB,t+4_000_000_000L,true);scene.update(f.editor,null,f.layer,c,input,t+4_000_000_000L,.04);f.paint();
         input.pressed(KeyEvent.VK_BACK_SPACE,t+5_000_000_000L,true);scene.update(f.editor,null,f.layer,c,input,t+6_000_000_000L,.04);f.paint();
         c.runSerial++;scene.update(f.editor,null,f.layer,c,input,t+7_000_000_000L,.04);f.paint();
+        // A held Delete takes priority over the Run lounge; start a fresh launch after release.
+        input.reset(t+8_000_000_000L);c.runSerial++;scene.update(f.editor,null,f.layer,c,input,t+8_000_000_000L,.04);
+        PetPlayScene.Surface surface=(PetPlayScene.Surface)Arrays.stream(f.layer.getComponents()).filter(component->component instanceof PetPlayScene.Surface).findFirst().orElseThrow();
+        check(surface.lounge!=null&&surface.actors.size()==2&&surface.actors.stream().allMatch(a->a.frame().action()==PetBehavior.Action.LOUNGE),"Run seats all enabled companions in a shared lounge");
+        Rectangle seat=surface.lounge.seats().get(0);input.mouseScreen=new Point((int)seat.getCenterX(),(int)seat.getMaxY()-35);scene.update(f.editor,null,f.layer,c,input,t+8_040_000_000L,.04);
+        check(surface.lounge==null&&surface.actors.stream().allMatch(a->a.frame().action()==PetBehavior.Action.RUN),"Hover dismisses the sofa and scatters every companion");
+        scene.update(f.editor,null,f.layer,c,input,t+9_200_000_000L,.04);scene.update(f.editor,null,f.layer,c,input,t+9_240_000_000L,.04);check(surface.actors.isEmpty(),"After scattering, companions resume their editor activities");
         check(cat.xp==0&&frog.xp==0&&f.source.equals(f.document.getText()),"Ball, jetpack, balloon, chair and launch scenes change neither XP nor document");
-        c.keyboardGames=false;scene.update(f.editor,null,f.layer,c,input,t+8_000_000_000L,.04);c.behindText=false;scene.update(f.editor,null,f.layer,c,input,t+9_000_000_000L,.04);
+        c.keyboardGames=false;scene.update(f.editor,null,f.layer,c,input,t+10_000_000_000L,.04);c.behindText=false;scene.update(f.editor,null,f.layer,c,input,t+11_000_000_000L,.04);
         check(f.disposed==1,"Disabling editor presence releases the background hook");
+        c.keyboardGames=true;input.pressed(KeyEvent.VK_ENTER,t+12_000_000_000L,true);scene.update(f.editor,null,f.layer,c,input,t+12_000_000_000L,.04);check(f.markers==2,"Games remain visible with autonomous editor walks disabled");
+        check(PetRoaming.accepts(f.editor,new KeyEvent(new JPanel(),KeyEvent.KEY_PRESSED,0,0,KeyEvent.VK_ENTER,'\n'),f.content),"Actual editor focus handles keys whose source is retargeted by the IDE");
+        check(!PetRoaming.accepts(f.editor,new KeyEvent(f.content,KeyEvent.KEY_PRESSED,0,0,KeyEvent.VK_ENTER,'\n'),new JTextField()),"Popup settings do not trigger games in the background editor");
         scene.suspend();scene.close();check(f.layer.getComponentCount()==1,"Closing removes the foreground surface and leaves editor components intact");
     }
 }

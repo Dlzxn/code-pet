@@ -53,22 +53,28 @@ public final class SdkChecks {
                 java.awt.Toolkit toolkit=java.awt.Toolkit.getDefaultToolkit();
                 int listenersBefore=toolkit.getAWTEventListeners(java.awt.AWTEvent.MOUSE_MOTION_EVENT_MASK).length;
                 int keyListenersBefore=toolkit.getAWTEventListeners(java.awt.AWTEvent.KEY_EVENT_MASK).length;
-                PetRoaming roaming=new PetRoaming(project);roaming.start();
+                javax.swing.JPanel editorContent=new javax.swing.JPanel();
+                com.intellij.openapi.editor.Editor editor=proxy(com.intellij.openapi.editor.Editor.class,(p,m,a)->switch(m.getName()){
+                    case "getContentComponent"->editorContent;case "getEditorKind"->com.intellij.openapi.editor.EditorKind.MAIN_EDITOR;default->fallback(p,m,a);
+                });
+                java.util.concurrent.atomic.AtomicReference<java.util.function.Consumer<java.awt.event.KeyEvent>> keyObserver=new java.util.concurrent.atomic.AtomicReference<>();int[] hooksClosed={0};
+                PetRoaming roaming=new PetRoaming(project);roaming.start(listener->{keyObserver.set(listener);return ()->hooksClosed[0]++;},()->editor);
                 try{
                     Field field=PetRoaming.class.getDeclaredField("input");field.setAccessible(true);PetPlayInput input=(PetPlayInput)field.get(roaming);
                     long now=System.nanoTime();input.lastMouse=input.lastTyping=now-46_000_000_000L;
                     check(input.away(now),"Service input tracks absence");
                     mouseSource.dispatchEvent(new java.awt.event.MouseEvent(mouseSource,java.awt.event.MouseEvent.MOUSE_MOVED,System.currentTimeMillis(),0,20,20,0,false));
                     check(!input.away(System.nanoTime()),"Actual AWT mouse event ends absence immediately");
-                    input.pressed(java.awt.event.KeyEvent.VK_DELETE,now,true);
-                    var release=new java.awt.event.KeyEvent(mouseSource,java.awt.event.KeyEvent.KEY_RELEASED,System.currentTimeMillis(),0,java.awt.event.KeyEvent.VK_DELETE,java.awt.event.KeyEvent.CHAR_UNDEFINED);
-                    mouseSource.dispatchEvent(release);
-                    // Key dispatch depends on focus in headless AWT; exercise the registered observer directly.
-                    Field observer=PetRoaming.class.getDeclaredField("observer");observer.setAccessible(true);((java.awt.event.AWTEventListener)observer.get(roaming)).eventDispatched(release);
+                    var enter=new java.awt.event.KeyEvent(editorContent,java.awt.event.KeyEvent.KEY_PRESSED,System.currentTimeMillis(),0,java.awt.event.KeyEvent.VK_ENTER,'\n');keyObserver.get().accept(enter);
+                    check(input.ballSerial==1&&!enter.isConsumed(),"Early IDE key hook launches a ball without consuming Enter");
+                    var deletion=new java.awt.event.KeyEvent(editorContent,java.awt.event.KeyEvent.KEY_PRESSED,System.currentTimeMillis(),0,java.awt.event.KeyEvent.VK_BACK_SPACE,'\b');keyObserver.get().accept(deletion);
+                    check(input.deleteStart>=0&&!deletion.isConsumed(),"Mac Backspace starts held-delete tracking before IDE shortcut dispatch");
+                    var release=new java.awt.event.KeyEvent(mouseSource,java.awt.event.KeyEvent.KEY_RELEASED,System.currentTimeMillis(),0,java.awt.event.KeyEvent.VK_BACK_SPACE,java.awt.event.KeyEvent.CHAR_UNDEFINED);keyObserver.get().accept(release);
                     check(input.deleteStart<0&&!release.isConsumed(),"Release clears held state without consuming editor input");
                 }catch(ReflectiveOperationException e){throw new AssertionError(e);}
-                check(toolkit.getAWTEventListeners(java.awt.AWTEvent.KEY_EVENT_MASK).length==keyListenersBefore+1,"One keyboard observer serves every companion");
+                check(toolkit.getAWTEventListeners(java.awt.AWTEvent.KEY_EVENT_MASK).length==keyListenersBefore,"Keyboard observation does not depend on late AWT delivery");
                 roaming.dispose();
+                check(hooksClosed[0]==1,"Dispose releases the early IDE key hook");
                 check(toolkit.getAWTEventListeners(java.awt.AWTEvent.KEY_EVENT_MASK).length==keyListenersBefore,"Dispose removes keyboard activity observer");
                 check(toolkit.getAWTEventListeners(java.awt.AWTEvent.MOUSE_MOTION_EVENT_MASK).length==listenersBefore,"Dispose removes global mouse observer");
                 try{Field field=PetRoaming.class.getDeclaredField("timer");field.setAccessible(true);check(!((javax.swing.Timer)field.get(roaming)).isRunning(),"Roaming disposal stops the live timer");}catch(ReflectiveOperationException e){throw new AssertionError(e);}

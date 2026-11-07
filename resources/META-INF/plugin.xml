@@ -1,7 +1,7 @@
 <idea-plugin>
   <id>dev.codepet.prototype</id>
   <name>Code Pet</name>
-  <version>0.6.0</version>
+  <version>0.7.0</version>
   <vendor>Personal</vendor>
   <description>Личный питомец, который растёт вместе с вашей работой над кодом.</description>
   <idea-version since-build="263" until-build="263.*"/>

@@ -24,7 +24,7 @@ final class PetBehavior {
         PUT_AWAY("Убирает вещи на полку",4), SEARCH_TOY("Ищет потерянную игрушку",5), FIND_TOY("Нашёл игрушку!",4),
         RETURN_HOME("Возвращается в уголок",5), PACK_PICNIC("Складывает плед",4), REPAIR("Мастерит находку",6),
         SHOW_FIND("Показывает находку",4), SHOW_GIFT("Открывает подарок за уровень",6),
-        SPECIES_TRICK("Занимается любимым делом",7), CELEBRATE("Радуется успешным тестам",4), THINK("Спокойно поддерживает",4), BALL_THINK("Оценивает траекторию мяча",.65), BALLOON_RIDE("Улетает с шариком",14), CINEMA("Смотрит из кресла с попкорном",20);
+        SPECIES_TRICK("Занимается любимым делом",7), CELEBRATE("Радуется успешным тестам",4), THINK("Спокойно поддерживает",4), BALL_THINK("Оценивает траекторию мяча",.65), BALLOON_RIDE("Улетает с шариком",14), CINEMA("Смотрит из кресла с попкорном",20), LOUNGE("Смотрит телевизор с друзьями",12);
         final String label; final double duration;
         Action(String label,double duration){this.label=label;this.duration=duration;}
         boolean moves(){return this==WALK||this==RUN||this==HOP||this==TIPTOE||this==BACKSTEP||this==CHASE_SPARK||this==RIDE_PENCIL||this==LETTER_SLIDE||this==LETTER_BRIDGE||this==SWEEP||this==DUST_LETTERS||this==SEARCH_TOY||this==RETURN_HOME;}
@@ -52,6 +52,7 @@ final class PetBehavior {
     double storyDuration(){return story==null?action.duration:story.duration();}
     int consumeCompleted(){int count=completed;completed=0;return count;}
     void hover(boolean value){hovered=value;}
+    void place(double fraction,int facing){position=Math.max(0,Math.min(1,fraction));direction=facing<0?-1:1;velocity=0;}
     void temperament(String value){temperament=value;}
     void autonomy(PetModel pet,boolean away){profile=pet;temperament=pet.temperament;this.away=away;}
     void play(){startStory(new PetStories.Story("Потерянный мяч",new Action[]{Action.PLAY_BALL,Action.SEARCH_TOY,Action.FIND_TOY,Action.RETURN_HOME},"ball"));}

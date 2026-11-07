@@ -22,7 +22,7 @@ def main():
     git("diff", "--cached", "--check")
     changed = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=ROOT)
     if changed.returncode == 1:
-        git("commit", "-m", "Add multiple companions, editor-background rendering and keyboard games")
+        git("commit", "-m", "Fix editor keys, add shared sofa scene and simplify companion controls")
     elif changed.returncode != 0:
         raise SystemExit(changed.returncode)
     git("push", "-u", "origin", "main")

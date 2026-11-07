@@ -11,7 +11,7 @@ import java.util.List;
 /** Multiple autonomous companions; a single clock and one background painter per selected editor. */
 final class PetPlayScene implements AutoCloseable {
     private static final class Buddy {
-        final PetBehavior behavior=new PetBehavior();final PetDialogue dialogue=new PetDialogue();double x,y,vx,vy;long balloonSince,lastJump,runUntil;double balloonX,renderScale;boolean grow;int files;long signal;Rectangle hoverBounds;
+        final PetBehavior behavior=new PetBehavior();final PetDialogue dialogue=new PetDialogue();double x,y,vx,vy;long balloonSince,lastJump,scatterStart,editorUntil;double balloonX,renderScale,scatterDuration;boolean grow;int files;long signal;Rectangle hoverBounds;Point scatterFrom,scatterTo;
         Buddy(PetModel pet){files=pet.filesCreated;signal=pet.ideSignal;behavior.autonomy(pet,false);behavior.startStory(PetStories.choose(pet,new Random(pet.id.hashCode()),false));}
     }
     record Actor(PetModel pet,PetBehavior.Frame frame,Rectangle bounds,double scale,String speech,boolean balloon){}
@@ -21,8 +21,8 @@ final class PetPlayScene implements AutoCloseable {
     private final PetBall ball=new PetBall();
     private final Surface surface=new Surface();
     private Editor editor;private PetEditorBackground background;private JLayeredPane layer;
-    private long lastBall,lastBalloon,lastRun;private int speaker;
-    private String runSpeech="";private Point runAt;
+    private long lastBall,lastBalloon,lastRun,loungeUntil;private int speaker;
+    private String runSpeech="",speakerId="";private Point runAt;
     private long created=System.nanoTime();
     void update(Editor next,ToolWindow projectWindow,JLayeredPane target,PetCollection collection,PetPlayInput input,long now,double dt){
         List<PetModel> pets=collection.activePets();Set<String> ids=new HashSet<>();pets.forEach(p->ids.add(p.id));buddies.keySet().removeIf(id->!ids.contains(id));
@@ -30,17 +30,23 @@ final class PetPlayScene implements AutoCloseable {
         if(surface.getWidth()!=layer.getWidth()||surface.getHeight()!=layer.getHeight())surface.setBounds(0,0,layer.getWidth(),layer.getHeight());
         if(editor!=next){if(background!=null)background.close();background=null;editor=next;ball.active=false;buddies.values().forEach(b->{b.x=b.y=0;});}
         Rectangle view=editor==null?new Rectangle(0,0,Math.max(200,layer.getWidth()),Math.max(200,layer.getHeight())):editor.getScrollingModel().getVisibleArea();
-        if(editor!=null&&collection.behindText&&background==null)background=new PetEditorBackground(editor);
-        if((!collection.behindText||editor==null)&&background!=null){background.close();background=null;}
-        if(collection.keyboardGames&&collection.behindText&&input.ballSerial!=lastBall&&editor!=null){lastBall=input.ballSerial;Point at=editor.visualPositionToXY(editor.getCaretModel().getVisualPosition());at.translate(14,editor.getLineHeight());ball.launch(view,at,now,random);}
-        if(!collection.keyboardGames||!collection.behindText){ball.active=false;lastBall=input.ballSerial;lastBalloon=input.balloonSerial;buddies.values().forEach(b->b.balloonSince=0);}
-        boolean newBalloon=collection.keyboardGames&&collection.behindText&&input.balloonSerial!=lastBalloon&&editor!=null;if(newBalloon)lastBalloon=input.balloonSerial;
+        if(!pets.isEmpty()&&collection.keyboardGames&&input.ballSerial!=lastBall&&editor!=null){lastBall=input.ballSerial;loungeUntil=0;Point at=editor.visualPositionToXY(editor.getCaretModel().getVisualPosition());at.translate(14,editor.getLineHeight());ball.launch(view,at,now,random);}
+        if(!collection.keyboardGames||pets.isEmpty()){ball.active=false;lastBall=input.ballSerial;lastBalloon=input.balloonSerial;buddies.values().forEach(b->b.balloonSince=0);if(!collection.keyboardGames){input.deleteStart=-1;input.cinemaUntil=0;}}
+        boolean newBalloon=!pets.isEmpty()&&collection.keyboardGames&&input.balloonSerial!=lastBalloon&&editor!=null;if(newBalloon)lastBalloon=input.balloonSerial;
         boolean newRun=lastRun!=collection.runSerial;
-        if(newRun){lastRun=collection.runSerial;runAt=runButton(layer);speaker=pets.isEmpty()?0:(speaker+1)%pets.size();if(!pets.isEmpty()){List<String> phrases=PetRunPhrases.phrases(pets.get(speaker));runSpeech=phrases.get(random.nextInt(phrases.size()));}}
+        if(newRun){lastRun=collection.runSerial;runAt=runButton(layer);loungeUntil=now+12_000_000_000L;speaker=pets.isEmpty()?0:(speaker+1)%pets.size();if(!pets.isEmpty()){PetModel narrator=pets.get(speaker);speakerId=narrator.id;List<String> phrases=PetRunPhrases.phrases(narrator);runSpeech=phrases.get(random.nextInt(phrases.size()));}}
+        if(collection.keyboardGames&&(newBalloon||input.cinema(now)))loungeUntil=0;
         ball.update(view,dt,now);
+        boolean gameVisible=collection.keyboardGames&&(ball.active||newBalloon||input.cinema(now)||buddies.values().stream().anyMatch(b->b.balloonSince>0));
+        boolean backgroundNeeded=editor!=null&&!pets.isEmpty()&&(collection.behindText||gameVisible);
+        if(backgroundNeeded&&background==null)background=new PetEditorBackground(editor);
+        if(!backgroundNeeded&&background!=null){background.close();background=null;}
         ArrayList<Actor> back=new ArrayList<>(),front=new ArrayList<>();int index=0;
         Rectangle left=projectFloor(projectWindow);
         Point mouse=null;if(input.mouseScreen!=null&&layer.isShowing()){mouse=new Point(input.mouseScreen);SwingUtilities.convertPointFromScreen(mouse,layer);}
+        int top=runAt==null?58:Math.max(58,runAt.y+12);
+        PetLounge.Layout lounge=loungeUntil>now?PetLounge.arrange(new Rectangle(12,top,Math.max(0,layer.getWidth()-28),Math.max(0,layer.getHeight()-top-16)),pets.size()):null;
+        if(lounge!=null&&!newRun&&lounge.hit(mouse)){scatter(pets,lounge,view,now);loungeUntil=0;lounge=null;ball.active=false;}
         for(PetModel pet:pets){
             Buddy b=buddies.computeIfAbsent(pet.id,id->new Buddy(pet));
             boolean hovered=mouse!=null&&b.hoverBounds!=null&&b.hoverBounds.contains(mouse);b.behavior.hover(hovered);
@@ -52,12 +58,16 @@ final class PetPlayScene implements AutoCloseable {
             if(pet.level()>pet.deliveredGiftLevel&&!b.behavior.inStory()){pet.receiveGift();b.behavior.force(PetBehavior.Action.SHOW_GIFT);}
             int complete=b.behavior.consumeCompleted();if(complete>0)b.grow=random.nextDouble()<.28;pet.storiesCompleted=(int)Math.min(Integer.MAX_VALUE,(long)pet.storiesCompleted+complete);
             if(newBalloon&&pet.animated){b.balloonSince=now;b.balloonX=Math.max(view.x+40,Math.min(view.getMaxX()-40,b.x));}
-            if(newRun){b.runUntil=now+7_000_000_000L;b.balloonSince=0;}
+            if(newRun){b.balloonSince=0;b.scatterStart=0;}
             double desired=pet.roamingSize/80.0*(pet.growWhenIdle&&input.away(now)&&b.grow?1.6:1);if(b.renderScale<=0)b.renderScale=desired;b.renderScale+=(desired-b.renderScale)*(1-Math.exp(-dt*3));double scale=b.renderScale;String speech=b.dialogue.text(pet);boolean balloon=false,foreground=false;
             PetBehavior.Frame frame;Rectangle bounds;
-            if(b.runUntil>now&&runAt!=null){
-                scale=Math.max(.42,scale);bounds=new Rectangle(Math.max(4,Math.min(layer.getWidth()-250,runAt.x-125-index*65)),Math.max(8,runAt.y+10+index%2*20),250,170);
-                frame=new PetBehavior.Frame(PetBehavior.Action.WAVE,pet.animated?(now-created)/1e9*6:0,.5,1,false);speech=index==speaker&&pet.speech?runSpeech:"";foreground=true;
+            if(lounge!=null){
+                scale=.33*lounge.unit();bounds=lounge.seats().get(index);
+                frame=new PetBehavior.Frame(PetBehavior.Action.LOUNGE,pet.animated?(now-created)/1e9*6:0,.5,1,false);speech="";foreground=true;
+            }else if(b.scatterStart>0){
+                double p=Math.min(1,(now-b.scatterStart)/1e9/b.scatterDuration),ease=1-Math.pow(1-p,3);
+                double x=b.scatterFrom.x+(b.scatterTo.x-b.scatterFrom.x)*ease,y=b.scatterFrom.y+(b.scatterTo.y-b.scatterFrom.y)*ease-Math.sin(p*Math.PI)*25;
+                bounds=bodyBounds(x,y,scale);foreground=true;speech="";frame=new PetBehavior.Frame(PetBehavior.Action.RUN,p*20,p,b.scatterTo.x<b.scatterFrom.x?-1:1,false);if(p>=1)b.scatterStart=0;
             }else if(collection.keyboardGames&&input.cinema(now)&&editor!=null&&pet.animated){
                 scale*=1.8;int columns=Math.max(1,view.width/165);bounds=new Rectangle(Math.max(view.x,(int)(view.getMaxX()-235-index%columns*165)),Math.max(view.y,(int)(view.getMaxY()-235-index/columns*145)),230,230);frame=new PetBehavior.Frame(PetBehavior.Action.CINEMA,(now-created)/1e9*6,.5,1,false);
             }else if(b.balloonSince>0&&editor!=null&&pet.animated){
@@ -81,7 +91,7 @@ final class PetPlayScene implements AutoCloseable {
                 b.behavior.update(dt,Math.max(1,view.width-130),pet.animated);
                 if(!b.behavior.inStory()&&b.behavior.action()==PetBehavior.Action.SIT)b.behavior.startStory(PetStories.choose(pet,random,input.away(now)));
                 double fraction=Math.floorMod(pet.id.hashCode(),997)/997.0;
-                if(left!=null&&((now-created)/22_000_000_000L+index)%3==0){
+                if(left!=null&&b.editorUntil<=now&&((now-created)/22_000_000_000L+index)%3==0){
                     int w=150,h=125;b.x=view.x+view.width*fraction;b.y=view.getMaxY()-12;
                     bounds=new Rectangle(left.x+(int)(Math.max(0,left.width-w)*b.behavior.position()),left.y+left.height-h,w,h);foreground=true;
                 }else{
@@ -95,14 +105,24 @@ final class PetPlayScene implements AutoCloseable {
             if(b.hoverBounds!=null){int width=Math.max(30,(int)(150*scale)),height=Math.max(45,(int)(170*scale));b.hoverBounds=new Rectangle((int)b.hoverBounds.getCenterX()-width/2,(int)b.hoverBounds.getMaxY()-16-height,width,height);}
             if(frame.action()!=PetBehavior.Action.HIDDEN){
                 if(foreground)front.add(new Actor(pet,frame,bounds,scale,speech,balloon));
-                else if(editor!=null&&collection.behindText)back.add(new Actor(pet,frame,bounds,scale,speech,balloon));
+                else if(background!=null)back.add(new Actor(pet,frame,bounds,scale,speech,balloon));
             }
             index++;
         }
         BallFrame ballFrame=new BallFrame(ball.x,ball.y,ball.active);
         if(background!=null){List<Actor> snapshot=List.copyOf(back);background.update(g->paint(g,snapshot,ballFrame),dirty(snapshot,ballFrame));}
         surface.ball=new BallFrame(0,0,false);
-        surface.actors=List.copyOf(front);surface.present(dirty(front,surface.ball));surface.setVisible(!front.isEmpty()||surface.ball.active);
+        surface.actors=List.copyOf(front);surface.lounge=lounge;surface.phase=(now-created)/1e9;
+        surface.speech=lounge!=null&&pets.stream().anyMatch(p->p.id.equals(speakerId)&&p.speech)?runSpeech:"";
+        Rectangle damage=dirty(front,surface.ball);if(lounge!=null)damage=damage.isEmpty()?lounge.bounds():damage.union(lounge.bounds());surface.present(damage);surface.setVisible(!front.isEmpty()||surface.ball.active||lounge!=null);
+    }
+    private void scatter(List<PetModel> pets,PetLounge.Layout lounge,Rectangle view,long now){
+        for(int i=0;i<pets.size();i++){PetModel pet=pets.get(i);Buddy b=buddies.computeIfAbsent(pet.id,id->new Buddy(pet));Rectangle seat=lounge.seats().get(i);
+            double fraction=Math.floorMod(pet.id.hashCode(),997)/997.0,position=.05+random.nextDouble()*.9;
+            Point target=new Point((int)(view.x+55+position*Math.max(1,view.width-110)),(int)(view.y+100+fraction*Math.max(0,view.height-160)));
+            b.scatterFrom=new Point((int)seat.getCenterX(),seat.y+seat.height-16);b.scatterTo=editor==null?target:SwingUtilities.convertPoint(editor.getContentComponent(),target,layer);b.scatterStart=now;b.scatterDuration=.65+random.nextDouble()*.35;
+            b.behavior.place(position,b.scatterTo.x<b.scatterFrom.x?-1:1);b.behavior.hover(false);b.balloonSince=0;b.editorUntil=now+10_000_000_000L;b.x=target.x;b.y=target.y;b.vx=b.vy=0;b.hoverBounds=null;
+        }
     }
     private static Rectangle dirty(List<Actor> actors,BallFrame ball){Rectangle area=ball.active?new Rectangle((int)ball.x-10,(int)ball.y-10,20,20):new Rectangle();for(Actor actor:actors){Rectangle bounds=new Rectangle(actor.bounds);if(actor.balloon)bounds.grow(80,35);area=area.isEmpty()?bounds:area.union(bounds);}return area;}
     private static Rectangle bodyBounds(double x,double foot,double scale){int h=Math.max(125,(int)(255*scale)+36);return new Rectangle((int)x-83,(int)foot-h+16,166,h);}
@@ -134,14 +154,14 @@ final class PetPlayScene implements AutoCloseable {
         return null;
     }
     void discardEvents(PetCollection collection,PetPlayInput input){lastBall=input.ballSerial;lastBalloon=input.balloonSerial;lastRun=collection.runSerial;}
-    void suspend(){if(background!=null){background.close();background=null;}editor=null;ball.active=false;buddies.values().forEach(b->{b.balloonSince=0;b.runUntil=0;});surface.setVisible(false);}
+    void suspend(){if(background!=null){background.close();background=null;}editor=null;ball.active=false;loungeUntil=0;buddies.values().forEach(b->{b.balloonSince=0;b.scatterStart=0;});surface.lounge=null;surface.setVisible(false);}
     private void detachSurface(){if(surface.getParent()!=null){Container p=surface.getParent();p.remove(surface);p.repaint();}}
     @Override public void close(){suspend();detachSurface();buddies.clear();layer=null;}
     static final class Surface extends JComponent {
-        List<Actor> actors=List.of();BallFrame ball=new BallFrame(0,0,false);private Rectangle previous=new Rectangle();
+        List<Actor> actors=List.of();BallFrame ball=new BallFrame(0,0,false);PetLounge.Layout lounge;String speech="";double phase;private Rectangle previous=new Rectangle();
         Surface(){setOpaque(false);setFocusable(false);setEnabled(false);setDoubleBuffered(true);}
         void present(Rectangle actor){Rectangle dirty=previous.union(actor);previous=new Rectangle(actor);repaint(dirty.x,dirty.y,dirty.width,dirty.height);}
         @Override public boolean contains(int x,int y){return false;}
-        @Override protected void paintComponent(Graphics graphics){PetPlayScene.paint((Graphics2D)graphics,actors,ball);}
+        @Override protected void paintComponent(Graphics graphics){Graphics2D g=(Graphics2D)graphics.create();try{g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);PetLounge.back(g,lounge);PetPlayScene.paint(g,actors,ball);PetLounge.front(g,lounge,speech,phase);}finally{g.dispose();}}
     }
 }

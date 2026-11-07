@@ -9,7 +9,7 @@ final class PetGamesPainter {
     }
     static void after(Graphics2D g,PetModel pet,PetBehavior.Frame f){
         if(f.action()==PetBehavior.Action.BALL_THINK){g.setFont(new Font(Font.SANS_SERIF,Font.BOLD,22));g.setColor(PetCatalog.color(pet.accessoryColor));g.drawString("…?",28,-138);}
-        if(f.action()!=PetBehavior.Action.CINEMA)return;
+        if(f.action()!=PetBehavior.Action.CINEMA&&f.action()!=PetBehavior.Action.LOUNGE)return;
         g.setColor(new Color(225,133,139));Path2D box=new Path2D.Double();box.moveTo(15,-69);box.lineTo(54,-69);box.lineTo(48,-24);box.lineTo(21,-24);box.closePath();g.fill(box);g.setColor(new Color(248,235,205));for(int i=0;i<4;i++)g.fillRect(22+i*8,-65,4,35);
         g.setColor(new Color(249,226,170));for(int i=0;i<9;i++)g.fill(new Ellipse2D.Double(16+i%4*10,-76-i/4*6,12,12));double bite=Math.sin(f.phase()*1.5);g.fill(new Ellipse2D.Double(2+bite*8,-90-bite*8,10,10));
     }
